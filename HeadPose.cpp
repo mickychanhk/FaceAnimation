@@ -822,55 +822,55 @@ int main(int argc, char** argv)
 		}
 		rank3Tensor.push_back(model);
 	}
-	vector<BlendShape> shapes;
+	//vector<BlendShape> shapes;
 
-	const int nShapes = 2;			// 150 identity
-	const int nExprs = 47;				// 46 expressions + 1 neutral
-	const int nVerts = 11510;			// 11510 vertices for each mesh
+	//const int nShapes = 2;			// 150 identity
+	//const int nExprs = 47;				// 46 expressions + 1 neutral
+	//const int nVerts = 11510;			// 11510 vertices for each mesh
 
-	const string path = "C:\\Users\\Micky\\Desktop\\FacewareHouse_allData\\";
-	const string foldername = "Tester_";
-	const string bsfolder = "Blendshape";
-	const string filename = "shape.bs";
+	//const string path = "C:\\Users\\Micky\\Desktop\\FacewareHouse_allData\\";
+	//const string foldername = "Tester_";
+	//const string bsfolder = "Blendshape";
+	//const string filename = "shape.bs";
 
-	shapes.resize(nShapes);
-	for (int i = 0; i < nShapes; i++) {
-		stringstream ss;
-		ss << path << foldername << (i + 1) << "\\" << bsfolder + "\\" + filename;
+	//shapes.resize(nShapes);
+	//for (int i = 0; i < nShapes; i++) {
+	//	stringstream ss;
+	//	ss << path << foldername << (i + 1) << "\\" << bsfolder + "\\" + filename;
 
-		shapes[i].read(ss.str());
-	}
-	int nCoords = nVerts * 3;
+	//	shapes[i].read(ss.str());
+	//}
+	//int nCoords = nVerts * 3;
 
-	// create an order 3 tensor for the blend shapes	
-	Tensor3<double> t(nShapes, nExprs, nCoords);
-	//cout << nShapes << " " << nExprs << " " << nCoords << endl;
-	// fill in the data
-	for (int i = 0; i < shapes.size(); i++) {
-		const BlendShape& bsi = shapes[i];
-		//cout << bsi.expressionCount() << endl;
-		for (int j = 0; j < bsi.expressionCount(); j++) {
-			const BlendShape::shape_t& bsij = bsi.expression(j);
+	//// create an order 3 tensor for the blend shapes	
+	//Tensor3<double> t(nShapes, nExprs, nCoords);
+	////cout << nShapes << " " << nExprs << " " << nCoords << endl;
+	//// fill in the data
+	//for (int i = 0; i < shapes.size(); i++) {
+	//	const BlendShape& bsi = shapes[i];
+	//	//cout << bsi.expressionCount() << endl;
+	//	for (int j = 0; j < bsi.expressionCount(); j++) {
+	//		const BlendShape::shape_t& bsij = bsi.expression(j);
 
-			for (int k = 0, cidx = 0; k < nVerts; k++, cidx += 3) {
-				const BlendShape::vert_t& v = bsij[k];
+	//		for (int k = 0, cidx = 0; k < nVerts; k++, cidx += 3) {
+	//			const BlendShape::vert_t& v = bsij[k];
 
-				t(i, j, cidx) = v.x;
-				t(i, j, cidx + 1) = v.y;
-				t(i, j, cidx + 2) = v.z;
-			}
-		}
-	}
-	int ms[2] = { 0, 1 };		// only the first two modes
-	int ds[2] = { numOfuser, 47 };	// pick 50 for identity and 25 for expression
-	vector<int> modes(ms, ms + 2);
-	vector<int> dims(ds, ds + 2);
-	auto comp2 = t.svd(modes, dims);
+	//			t(i, j, cidx) = v.x;
+	//			t(i, j, cidx + 1) = v.y;
+	//			t(i, j, cidx + 2) = v.z;
+	//		}
+	//	}
+	//}
+	//int ms[2] = { 0, 1 };		// only the first two modes
+	//int ds[2] = { numOfuser, 47 };	// pick 50 for identity and 25 for expression
+	//vector<int> modes(ms, ms + 2);
+	//vector<int> dims(ds, ds + 2);
+	//auto comp2 = t.svd(modes, dims);
 
-	coreTensor = std::get<0>(comp2);
-	widAndWExp = std::get<1>(comp2);
-	tempWExpTensor = coreTensor.modeProduct(widAndWExp[0], 0);
-	tempWIdTensor = coreTensor.modeProduct(widAndWExp[1], 1);
+	//coreTensor = std::get<0>(comp2);
+	//widAndWExp = std::get<1>(comp2);
+	//tempWExpTensor = coreTensor.modeProduct(widAndWExp[0], 0);
+	//tempWIdTensor = coreTensor.modeProduct(widAndWExp[1], 1);
 	vector<cv::Point3d> modelPoint;
 	vector<int> vertexPoint;
 	//vertexPoint.push_back(8638);	 // l eye (v 8083)
