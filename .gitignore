@@ -865,3 +865,7 @@
 /x64/Release/OGL_OCV_common.obj
 /x64/Release/stdafx.obj
 /x64/Release/vc141.pdb
+/.vs/FaceReco/v15/ipch/AutoPCH/3e021829039eab7b/HEADPOSE_ANOTHERMETHOD.ipch
+/x64/Release/FaceReco.Build.CppClean.log
+/x64/Release/HeadPose_anothermethod.obj
+/x64/Release/opencv_world341.dll
