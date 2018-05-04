@@ -74,6 +74,7 @@ int faceDesign = 0;
 cv::Mat op;
 cv::Mat op_min;
 vector<cv::Point2f> imgPoint;
+vector<cv::Point2f> prevImgPoint, prevLandmarkPts;
 int numOfuser = 2;
 int numOfBlendshape = 47;
 int numOfVertex = 11510;
@@ -81,7 +82,24 @@ Tensor3<double> coreTensor;
 vector<Tensor2<double>> widAndWExp;
 Tensor3<double> tempWExpTensor;
 Tensor3<double> tempWIdTensor;
-
+double calDistanceDiff(vector<cv::Point2f> curPoints, vector<cv::Point2f> lastPoints) {
+	double variance = 0.0;
+	double sum = 0.0;
+	std::vector<double> diffs;
+	if (curPoints.size() == lastPoints.size()) {
+		for (int i = 0; i < curPoints.size(); i++) {
+			double diff = std::sqrt(std::pow(curPoints[i].x - lastPoints[i].x, 2.0) + std::pow(curPoints[i].y - lastPoints[i].y, 2.0));
+			sum += diff;
+			diffs.push_back(diff);
+		}
+		double mean = sum / diffs.size();
+		for (int i = 0; i < curPoints.size(); i++) {
+			variance += std::pow(diffs[i] - mean, 2);
+		}
+		return variance / diffs.size();
+	}
+	return variance;
+}
 vector<double> findWid(vector<int> vertexPoint) {
 	double rotss[9] = { 0 };
 	cv::Mat rotMss(3, 3, CV_64FC1, rotss);
@@ -170,9 +188,9 @@ vector<double> findWExp(vector<int> vertexPoint) {
 		//for (int i = 0; i < numOfuser; i++) {
 		for (int j = 0; j < numBS; j++) {
 			for (int k = 0; k < imgPoint.size(); k++) {
-					double pX = rank3Tensor[0][j]->vertices[3 * vertexPoint[k]];
-					double pY = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 1];
-					double pZ = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 2];
+				double pX = rank3Tensor[0][j]->vertices[3 * vertexPoint[k]];
+				double pY = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 1];
+				double pZ = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 2];
 				//double pX = tempWExpTensor(0, j, vertexPoint[k]);// -tempWExpTensor(0, 0, vertexPoint[k]);
 				//double pY = tempWExpTensor(0, j, vertexPoint[k] + 1);// -tempWExpTensor(0, 0, vertexPoint[k] + 1);
 				//double pZ = tempWExpTensor(0, j, vertexPoint[k] + 2);// -tempWExpTensor(0, 0, vertexPoint[k] + 2);
@@ -542,16 +560,16 @@ void display(void)
 					double faceZ = rank3Tensor[i][j]->vertices[3 * k + 2];// -rank3Tensor[i][0]->vertices[3 * k + 2];
 					/*double faceX = coreTensor(i, j, k);
 					double faceY = coreTensor(i, j, k + 1);
-					double faceZ = coreTensor(i, j, k + 2);
-					double vertexX = faceX   * wid[i] * wexp[j];
+					double faceZ = coreTensor(i, j, k + 2);*/
+					/*double vertexX = faceX   * wid[i] * wexp[j];
 					double vertexY = faceY   * wid[i] * wexp[j];
 					double vertexZ = faceZ   * wid[i] * wexp[j];*/
 					/*cout << vertexX << endl;
 					cout << vertexX << endl;
 					cout << vertexX << endl;*/
-					empty_face[0]->vertices[3 * k] += faceX   * wid[i] * wexp[j];
-					empty_face[0]->vertices[3 * k + 1] += faceY  * wid[i] * wexp[j];
-					empty_face[0]->vertices[3 * k + 2] += faceZ  * wid[i] * wexp[j];
+					empty_face[0]->vertices[3 * k] += faceX * wid[i] * wexp[j];
+					empty_face[0]->vertices[3 * k + 1] += faceY * wid[i] * wexp[j];
+					empty_face[0]->vertices[3 * k + 2] += faceZ * wid[i] * wexp[j];
 				}
 			}
 		}
@@ -564,6 +582,7 @@ void display(void)
 	for (int i = 0; i < originalVertex.size(); i++) {
 		empty_face[0]->vertices[3 + i] = originalVertex[i];
 	}
+
 	//----------Axes
 	//glScaled(.5, .5,.5);
 	//drawAxes();
@@ -609,8 +628,8 @@ void loadNext() {
 	cv::Mat temp;
 	//temp = cv::imread("Stephen-640x480.jpg");
 	webcam >> temp;
-	cv::Mat dst;
-	cv::resize(temp, dst, cv::Size(352, 240));
+	cv::Mat dst = temp;
+	//cv::resize(temp, dst, cv::Size(352, 240));
 	dlib::cv_image <dlib::bgr_pixel > cimg(dst);
 	std::vector<dlib::rectangle> dets = detector(cimg);
 	if (dets.size() != 0) {
@@ -623,7 +642,7 @@ void loadNext() {
 		/*if (inputfile.fail()) {
 			cerr << "can't read " << buf << endl; return;
 		}*/
-		vector<cv::Point2d> tempPt;
+		vector<cv::Point2f> tempPt;
 		tempPt.push_back(cv::Point(shape.part(45).x(), shape.part(45).y()));
 		tempPt.push_back(cv::Point(shape.part(37).x(), shape.part(37).y()));
 		tempPt.push_back(cv::Point(shape.part(33).x(), shape.part(33).y()));
@@ -714,10 +733,17 @@ void loadNext() {
 		imagePoints.push_back(cv::Point(shape.part(24).x(), shape.part(24).y()));	 	// l eyebrow (v 1138)
 		imagePoints.push_back(cv::Point(shape.part(25).x(), shape.part(25).y()));	 	// l eyebrow (v 1138)
 		imagePoints.push_back(cv::Point(shape.part(26).x(), shape.part(26).y()));	 	// l eyebrow (v 1138)
-
-
+		double varianceForLandmark = calDistanceDiff(imagePoints, prevLandmarkPts);
+		if (varianceForLandmark < 0.5) {
+			std::swap(prevLandmarkPts, imagePoints);
+		}
+		double variance = calDistanceDiff(tempPt, prevImgPoint);
+		if (variance < 0.3) {
+			std::swap(prevImgPoint, tempPt);
+		}
 		cv::Mat ip = cv::Mat(imagePoints);
 		imgPoint = imagePoints;
+
 		/*sprintf(buf, "%sAngelina_Jolie/Angelina_Jolie_%04d.jpg", workingDir, counter);*/
 		cv::Mat ip_temp = cv::Mat(tempPt);
 		/*cv::Mat img = cv::imread(buf);*/
@@ -727,10 +753,13 @@ void loadNext() {
 		// paint 2D feature points
 		//for (unsigned int i = 0; i < imagePoints.size(); i++) circle(dst, imagePoints[i], 1, cv::Scalar(255, 0, 255), CV_FILLED);
 		for (unsigned int i = 0; i < shape.num_parts(); i++) {
-			circle(dst, cv::Point(shape.part(i).x(), shape.part(i).y()), 1, cv::Scalar(255, 0, 255), CV_FILLED);
+			circle(dst, imgPoint[i], 1, cv::Scalar(255, 0, 255), CV_FILLED);
+			//circle(dst, cv::Point2f(shape.part(i).x(),shape.part(i).y()), 1, cv::Scalar(255, 0, 255), CV_FILLED);
 		}
 		loadWithPoints(ip_temp, dst, imagePoints);
 		cv::imshow("micky", dst);
+		std::swap(prevLandmarkPts, imagePoints);
+		swap(prevImgPoint, tempPt);
 		//imgWithDrawing.set(dst);
 	}
 	counter = (counter + 1);
@@ -822,55 +851,61 @@ int main(int argc, char** argv)
 		}
 		rank3Tensor.push_back(model);
 	}
-	//vector<BlendShape> shapes;
+	for (int i = 0; i < 7; i++) {
+		prevImgPoint.push_back(cv::Point2f(0, 0));
+	}
+	for (int i = 0; i < 68; i++) {
+		prevLandmarkPts.push_back(cv::Point2f(0, 0));
+	}
+	vector<BlendShape> shapes;
 
-	//const int nShapes = 2;			// 150 identity
-	//const int nExprs = 47;				// 46 expressions + 1 neutral
-	//const int nVerts = 11510;			// 11510 vertices for each mesh
+	const int nShapes = 2;			// 150 identity
+	const int nExprs = 47;				// 46 expressions + 1 neutral
+	const int nVerts = 11510;			// 11510 vertices for each mesh
 
-	//const string path = "C:\\Users\\Micky\\Desktop\\FacewareHouse_allData\\";
-	//const string foldername = "Tester_";
-	//const string bsfolder = "Blendshape";
-	//const string filename = "shape.bs";
+	const string path = "C:\\Users\\Micky\\Desktop\\FacewareHouse_allData\\";
+	const string foldername = "Tester_";
+	const string bsfolder = "Blendshape";
+	const string filename = "shape.bs";
 
-	//shapes.resize(nShapes);
-	//for (int i = 0; i < nShapes; i++) {
-	//	stringstream ss;
-	//	ss << path << foldername << (i + 1) << "\\" << bsfolder + "\\" + filename;
+	shapes.resize(nShapes);
+	for (int i = 0; i < nShapes; i++) {
+		stringstream ss;
+		ss << path << foldername << (i + 1) << "\\" << bsfolder + "\\" + filename;
 
-	//	shapes[i].read(ss.str());
-	//}
-	//int nCoords = nVerts * 3;
+		shapes[i].read(ss.str());
+	}
+	int nCoords = nVerts * 3;
 
-	//// create an order 3 tensor for the blend shapes	
-	//Tensor3<double> t(nShapes, nExprs, nCoords);
-	////cout << nShapes << " " << nExprs << " " << nCoords << endl;
-	//// fill in the data
-	//for (int i = 0; i < shapes.size(); i++) {
-	//	const BlendShape& bsi = shapes[i];
-	//	//cout << bsi.expressionCount() << endl;
-	//	for (int j = 0; j < bsi.expressionCount(); j++) {
-	//		const BlendShape::shape_t& bsij = bsi.expression(j);
+	// create an order 3 tensor for the blend shapes	
+	Tensor3<double> t(nShapes, nExprs, nCoords);
+	//cout << nShapes << " " << nExprs << " " << nCoords << endl;
+	// fill in the data
+	for (int i = 0; i < shapes.size(); i++) {
+		const BlendShape& bsi = shapes[i];
+		//cout << bsi.expressionCount() << endl;
+		for (int j = 0; j < bsi.expressionCount(); j++) {
+			const BlendShape::shape_t& bsij = bsi.expression(j);
 
-	//		for (int k = 0, cidx = 0; k < nVerts; k++, cidx += 3) {
-	//			const BlendShape::vert_t& v = bsij[k];
+			for (int k = 0, cidx = 0; k < nVerts; k++, cidx += 3) {
+				const BlendShape::vert_t& v = bsij[k];
 
-	//			t(i, j, cidx) = v.x;
-	//			t(i, j, cidx + 1) = v.y;
-	//			t(i, j, cidx + 2) = v.z;
-	//		}
-	//	}
-	//}
-	//int ms[2] = { 0, 1 };		// only the first two modes
-	//int ds[2] = { numOfuser, 47 };	// pick 50 for identity and 25 for expression
-	//vector<int> modes(ms, ms + 2);
-	//vector<int> dims(ds, ds + 2);
-	//auto comp2 = t.svd(modes, dims);
+				t(i, j, cidx) = v.x;
+				t(i, j, cidx + 1) = v.y;
+				t(i, j, cidx + 2) = v.z;
+			}
+		}
+	}
+	int ms[2] = { 0, 1 };		// only the first two modes
+	int ds[2] = { numOfuser, 47 };	// pick 50 for identity and 25 for expression
+	vector<int> modes(ms, ms + 2);
+	vector<int> dims(ds, ds + 2);
+	auto comp2 = t.svd(modes, dims);
 
-	//coreTensor = std::get<0>(comp2);
-	//widAndWExp = std::get<1>(comp2);
-	//tempWExpTensor = coreTensor.modeProduct(widAndWExp[0], 0);
-	//tempWIdTensor = coreTensor.modeProduct(widAndWExp[1], 1);
+	coreTensor = std::get<0>(comp2);
+	widAndWExp = std::get<1>(comp2);
+	tempWExpTensor = coreTensor.modeProduct(widAndWExp[0], 0);
+	tempWIdTensor = coreTensor.modeProduct(widAndWExp[1], 1);
 	vector<cv::Point3d> modelPoint;
 	vector<int> vertexPoint;
 	//vertexPoint.push_back(8638);	 // l eye (v 8083)
