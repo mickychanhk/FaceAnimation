@@ -63,14 +63,12 @@ OpenCVGLTexture imgTex, imgWithDrawing;
 cv::VideoCapture webcam(0);
 vector<GLMmodel*> empty_face;
 GLMmodel* average_face;
+GLMmodel* face_buffer;
 vector<GLMmodel*> blendshapes;
-vector<vector<GLMmodel*>> rank3Tensor;
 vector<vector<double>> wIdX, wIdY, wIdZ;
 vector<vector<double>>  wExpX, wExpY, wExpZ;
 dlib::shape_predictor sp;
 dlib::frontal_face_detector detector;
-int chaningRadio = 1;
-int faceDesign = 0;
 cv::Mat op;
 cv::Mat op_min;
 vector<cv::Point2f> imgPoint;
@@ -83,6 +81,56 @@ vector<Tensor2<double>> UIdAndUExp;
 Tensor3<double> tempWExpTensor;
 Tensor3<double> tempWIdTensor;
 Tensor3<double> initTensor;
+vector<double> finalWid(numOfuser), finalWExp(numOfBlendshape);
+
+
+vector<vector<double>> getWidFace(Tensor3<double> tensor, vector<double> widtemp, vector<double> wexptemp) {
+	Tensor3<double> tempTensor = initTensor.modeProduct(widtemp, 0).modeProduct(wexptemp, 1);
+	vector<vector<double>> tempWidFace;
+	for (int i = 0; i < numOfuser; i++) {
+		vector<double> temp;
+		for (int j = 0; j < numOfBlendshape; j++) {
+			for (int k = 0; k < numOfVertex; k++) {
+				if (j == 0) {
+					temp.push_back(tempTensor(i, j, 3 * k));
+					temp.push_back(tempTensor(i, j, 3 * k + 1));
+					temp.push_back(tempTensor(i, j, 3 * k + 2));
+				}
+				else {
+					temp[k] += tempTensor(i, j, 3 * k);
+					temp[k] += tempTensor(i, j, 3 * k + 1);
+					temp[k] += tempTensor(i, j, 3 * k + 2);
+				}
+			}
+		}
+		tempWidFace.push_back(temp);
+	}
+	return  tempWidFace;
+}
+vector<vector<double>> getWExpFace(Tensor3<double> tensor, vector<double> widtemp, vector<double> wexptemp) {
+	Tensor3<double> tempWExpTensor = initTensor.modeProduct(widtemp, 0).modeProduct(wexptemp, 1);
+	vector<vector<double>> tempWExpFace;
+	for (int j = 0; j < numOfBlendshape; j++) {
+		vector<double> temp;
+		for (int i = 0; i < numOfuser; i++) {
+			for (int k = 0; k < numOfVertex; k++) {
+				if (i == 0) {
+					temp.push_back(tempWExpTensor(i, j, 3 * k));
+					temp.push_back(tempWExpTensor(i, j, 3 * k + 1));
+					temp.push_back(tempWExpTensor(i, j, 3 * k + 2));
+				}
+				else {
+					temp[k] += tempWExpTensor(i, j, 3 * k);
+					temp[k] += tempWExpTensor(i, j, 3 * k + 1);
+					temp[k] += tempWExpTensor(i, j, 3 * k + 2);
+				}
+			}
+		}
+		tempWExpFace.push_back(temp);
+	}
+	return tempWExpFace;
+}
+
 double calDistanceDiff(vector<cv::Point2f> curPoints, vector<cv::Point2f> lastPoints) {
 	double variance = 0.0;
 	double sum = 0.0;
@@ -101,27 +149,72 @@ double calDistanceDiff(vector<cv::Point2f> curPoints, vector<cv::Point2f> lastPo
 	}
 	return variance;
 }
-vector<double> findWid(vector<int> vertexPoint, vector<double> wexp, vector<double> wid) {
-	cv::Mat_<double> transformationMatrix = (cv::Mat_<double>(3, 4) << 0.1, 0.1, 0.1, 0.1
-		, 0.1, 0.1, 0.1, 0.1,
-		0.1, 0.1, 0.1, 0.1);
+vector<double> findWid(vector<int> vertexPoint) {
+	double rotss[9] = { 0 };
+	cv::Mat rotMss(3, 3, CV_64FC1, rotss);
+	// convert the vector to matrix
+	Rodrigues(rvec, rotMss);
+	double* _r = rotMss.ptr<double>();
+	double _pm[12] = { _r[0],_r[1],_r[2],tv[0],
+		_r[3],_r[4],_r[5],tv[1],
+		_r[6],_r[7],_r[8],tv[2] };
+	cv::Matx34d P(_pm);
+	cv::Mat KP = camMatrix * cv::Mat(P);
 	vector<double> widtest(numOfuser), wexptest(numOfBlendshape);
-	widtest.push_back(1.0);
-	widtest.push_back(0);
-	wexptest.push_back(1);
-	for (int i = 1; i < numOfBlendshape; i++) {
-		wexptest.push_back(0);
+	for (int i = 0; i < widtest.size(); i++) {
+		widtest[i] = 0.2;
 	}
-	initTensor = initTensor.modeProduct(widtest, 0).modeProduct(wexptest, 1);
+	for (int i = 0; i < wexptest.size(); i++) {
+		wexptest[i] = 0.01;
+	}
+	int numLM = 68;
+	//for (int itr = 0; itr < 3; itr++) {
+	MatrixXd A(numLM * 2, numOfuser);
+	VectorXd b(numLM * 2);
 
-	for (int k = 0; k < imgPoint.size(); k++) {
-		/*double pX = initTensor(0, 0, 3 * vertexPoint[k]);
-		double pY = initTensor(0, 0, 3 * vertexPoint[k] + 1);
-		double pZ = initTensor(0, 0, 3 * vertexPoint[k] + 2);*/
-		double pX = average_face->vertices[3 * vertexPoint[k]];
-		double pY = average_face->vertices[3 * vertexPoint[k] + 1];
-		double pZ = average_face->vertices[3 * vertexPoint[k] + 2];
+
+	Tensor3<double> tempTensor = initTensor.modeProduct(widtest, 0).modeProduct(wexptest, 1);
+	for (int j = 0; j < numOfuser; j++) {
+		for (int k = 0; k < imgPoint.size(); k++) {
+			double pX = tempTensor(j, 0, 3 * vertexPoint[k]);
+			double pY = tempTensor(j, 0, 3 * vertexPoint[k] + 1);
+			double pZ = tempTensor(j, 0, 3 * vertexPoint[k] + 2);
+			cv::Mat_<double> X = (cv::Mat_<double>(4, 1)
+				<< pX,
+				pY,
+				pZ, 1.0);//convert point to vector
+			cv::Mat_<double> opt_m = KP * X; // KP = camera Matrix * Pose Matrix
+											 //cout << "point x" << opt_m(0) << "point y" << opt_m(1) << "point z" << opt_m(2) << endl;
+			double finalX = opt_m(0) / opt_m(2);
+			double finalY = opt_m(1) / opt_m(2);
+			A(k, j) = finalX;
+			A(k + vertexPoint.size(), j) = finalY;
+			b(k) = imgPoint[k].x;
+			b(k + vertexPoint.size()) = imgPoint[k].y;
+
+		}
 	}
+	VectorXd x(numOfuser);
+	//Solving Ax = b issues with non-negative least square
+	NNLS<MatrixXd>::solve(A, b, x);
+	//x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
+	double totalSum = 0;
+	vector<double> widList;
+	for (int i = 0; i < x.size(); i++) {
+		widList.push_back(x(i));
+		//widList.push_back(solution(i));
+		//totalSum += fabs(solution(i));
+	}
+	widtest = widList;
+	//}
+	//for (int i = 0; i < x.size(); i++) {
+	//	widList.push_back(x(i));
+	//	/*widList.push_back(fabs(solution(i)));
+	//	totalSum += fabs(solution(i));*/
+	//}
+	/*for (int i = 0; i < solution.size(); i++) {
+		widList[i] = widList[i] / totalSum;
+	}*/
 	//double rotss[9] = { 0 };
 	//cv::Mat rotMss(3, 3, CV_64FC1, rotss);
 	//// convert the vector to matrix
@@ -189,10 +282,9 @@ vector<double> findWid(vector<int> vertexPoint, vector<double> wexp, vector<doub
 	//		widList[i] = widList[i] / totalSum;
 	//	}*/
 	//}
-	return wid;
+	return widtest;
 }
-
-vector<double> findWExp(vector<int> vertexPoint, vector<double> wexp, vector<double> wid) {
+void findWidAndWExp(vector<int> vertexPoint) {
 	double rotss[9] = { 0 };
 	cv::Mat rotMss(3, 3, CV_64FC1, rotss);
 	// convert the vector to matrix
@@ -203,60 +295,169 @@ vector<double> findWExp(vector<int> vertexPoint, vector<double> wexp, vector<dou
 		_r[6],_r[7],_r[8],tv[2] };
 	cv::Matx34d P(_pm);
 	cv::Mat KP = camMatrix * cv::Mat(P);
-	int idx = 0;
+	vector<double> widtest(numOfuser), wexptest(numOfBlendshape);
+	for (int i = 0; i < widtest.size(); i++) {
+		widtest[i] = 0.5;
+	}
+	for (int i = 0; i < wexptest.size(); i++) {
+		wexptest[i] = 0.0212765957;
+	}
+	int numLM = 68;
+
+	for (int i = 0; i < 1; i++) {
+		MatrixXd Awid(numLM * 2, numOfuser);
+		VectorXd bwid(numLM * 2);
+		//Tensor3<double> tempTensorWid = initTensor.modeProduct(widtest, 0).modeProduct(wexptest, 1);
+		vector<vector<double>> wid_face = getWidFace(initTensor, widtest, wexptest);
+		for (int j = 0; j < numOfuser; j++) {
+			for (int k = 0; k < imgPoint.size(); k++) {
+				double pX = wid_face[j][3 * vertexPoint[k]];
+				double pY = wid_face[j][3 * vertexPoint[k] + 1];
+				double pZ = wid_face[j][3 * vertexPoint[k] + 2];
+				cv::Mat_<double> X = (cv::Mat_<double>(4, 1)
+					<< pX,
+					pY,
+					pZ, 1.0);//convert point to vector
+				cv::Mat_<double> opt_m = KP * X; // KP = camera Matrix * Pose Matrix
+												 //cout << "point x" << opt_m(0) << "point y" << opt_m(1) << "point z" << opt_m(2) << endl;
+				double finalX = opt_m(0) / opt_m(2);
+				double finalY = opt_m(1) / opt_m(2);
+				Awid(k, j) = finalX;
+				Awid(k + vertexPoint.size(), j) = finalY;
+				bwid(k) = imgPoint[k].x;
+				bwid(k + vertexPoint.size()) = imgPoint[k].y;
+			}
+		}
+		VectorXd xWid(numOfuser);
+		//Solving Ax = b issues with non-negative least square
+		NNLS<MatrixXd>::solve(Awid, bwid, xWid);
+		//x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
+		//double totalSum = 0;
+		vector<double> widList;
+		for (int i = 0; i < xWid.size(); i++) {
+			widList.push_back(xWid(i));
+			//widList.push_back(solution(i));
+			//totalSum += fabs(solution(i));
+		}
+		finalWid = widList;
+		widtest = widList;
+		int numBS = 47;
+		MatrixXd AWexp(numLM * 2, numBS);
+		VectorXd bWexp(numLM * 2);
+		//for (int i = 0; i < numOfuser; i++) {
+		vector<vector<double>> wexp_face = getWExpFace(initTensor, widtest, wexptest);
+		for (int j = 0; j < numBS; j++) {
+			for (int k = 0; k < imgPoint.size(); k++) {
+				double pX = wexp_face[j][3 * vertexPoint[k]];
+				double pY = wexp_face[j][3 * vertexPoint[k] + 1];
+				double pZ = wexp_face[j][3 * vertexPoint[k] + 2];
+				cv::Mat_<double> X = (cv::Mat_<double>(4, 1)
+					<< pX,
+					pY,
+					pZ, 1.0);//convert point to vector
+				cv::Mat_<double> opt_m = KP * X; // KP = camera Matrix * (Rotation Matrix + translation vector)
+				double finalX = opt_m(0) / opt_m(2);
+				double finalY = opt_m(1) / opt_m(2);
+				AWexp(k, j) = finalX;
+				AWexp(k + vertexPoint.size(), j) = finalY;
+				if (j == 0) {
+					bWexp(k) = imgPoint[k].x;
+					bWexp(k + vertexPoint.size()) = imgPoint[k].y;
+				}
+			}
+		}
+		VectorXd xWexp(numBS);
+		//Solving Ax = b issues with non-negative least square
+		NNLS<MatrixXd>::solve(AWexp, bWexp, xWexp);
+		//x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
+		//double totalSum = 0;
+		vector<double> wexpList;
+		for (int i = 0; i < xWexp.size(); i++) {
+			//wexpList.push_back(solution(i));
+			//dlib::clamp_function(x(i), 0, 1);
+			wexpList.push_back(xWexp(i));
+			//totalSum += fabs(solution(i));
+		}
+		finalWExp = wexpList;
+		wexptest = wexpList;
+	}
+}
+vector<double> findWExp(vector<int> vertexPoint) {
+	double rotss[9] = { 0 };
+	cv::Mat rotMss(3, 3, CV_64FC1, rotss);
+	// convert the vector to matrix
+	Rodrigues(rvec, rotMss);
+	double* _r = rotMss.ptr<double>();
+	double _pm[12] = { _r[0],_r[1],_r[2],tv[0],
+		_r[3],_r[4],_r[5],tv[1],
+		_r[6],_r[7],_r[8],tv[2] };
+	cv::Matx34d P(_pm);
+	cv::Mat KP = camMatrix * cv::Mat(P);
+	vector<double> widtest(numOfuser), wexptest(numOfBlendshape);
+	for (int i = 0; i < widtest.size(); i++) {
+		widtest[i] = 0.2;
+	}
+	for (int i = 0; i < wexptest.size(); i++) {
+		wexptest[i] = 0.01;
+	}
+	int numLM = 68;
+	//for (int itr = 0; itr < 3; itr++) {
+	MatrixXd A(numLM * 2, numOfuser);
+	VectorXd b(numLM * 2);
+
 
 	if (imgPoint.size() != 0) {
 		int numBS = 47;
 		int numLM = 68;
-		for (int itr = 0; itr < 3; itr++) {
-			vector<double> wexpList;
-			MatrixXd A(numLM * 2, numBS);
-			VectorXd b(numLM * 2);
-			//for (int i = 0; i < numOfuser; i++) {
-			for (int j = 0; j < numBS; j++) {
-				for (int k = 0; k < imgPoint.size(); k++) {
-					/*	double pX = rank3Tensor[0][j]->vertices[3 * vertexPoint[k]];
-						double pY = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 1];
-						double pZ = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 2];*/
-					double pX = initTensor(0, j, 3 * vertexPoint[k]) * wexp[j] * wid[0];// -tempWExpTensor(0, 0, vertexPoint[k]);
-					double pY = initTensor(0, j, 3 * vertexPoint[k] + 1) * wexp[j] * wid[0];// -tempWExpTensor(0, 0, vertexPoint[k] + 1);
-					double pZ = initTensor(0, j, 3 * vertexPoint[k] + 2) * wexp[j] * wid[0];// -tempWExpTensor(0, 0, vertexPoint[k] + 2);
-					cv::Mat_<double> X = (cv::Mat_<double>(4, 1)
-						<< pX,
-						pY,
-						pZ, 1.0);//convert point to vector
-					cv::Mat_<double> opt_m = KP * X; // KP = camera Matrix * Pose Matrix
-					double finalX = opt_m(0) / opt_m(2);
-					double finalY = opt_m(1) / opt_m(2);
-					A(k, j) = finalX;
-					A(k + vertexPoint.size(), j) = finalY;
-					//tempA[k + vertexPoint.size()][j] = finalY;
-					if (j == 0) {
-						b(k) = imgPoint[k].x;
-						b(k + vertexPoint.size()) = imgPoint[k].y;
-						//	tempB[k + vertexPoint.size()] = imgPoint[k].y;;
-					}
+
+		MatrixXd A(numLM * 2, numBS);
+		VectorXd b(numLM * 2);
+		//for (int i = 0; i < numOfuser; i++) {
+		Tensor3<double> tempTensor = initTensor.modeProduct(widtest, 0).modeProduct(wexptest, 1);
+		for (int j = 0; j < numBS; j++) {
+			for (int k = 0; k < imgPoint.size(); k++) {
+				/*	double pX = rank3Tensor[0][j]->vertices[3 * vertexPoint[k]];
+					double pY = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 1];
+					double pZ = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 2];*/
+				double pX = tempTensor(0, j, 3 * vertexPoint[k]);// -tempWExpTensor(0, 0, vertexPoint[k]);
+				double pY = tempTensor(0, j, 3 * vertexPoint[k] + 1);// -tempWExpTensor(0, 0, vertexPoint[k] + 1);
+				double pZ = tempTensor(0, j, 3 * vertexPoint[k] + 2);// -tempWExpTensor(0, 0, vertexPoint[k] + 2);
+				cv::Mat_<double> X = (cv::Mat_<double>(4, 1)
+					<< pX,
+					pY,
+					pZ, 1.0);//convert point to vector
+				cv::Mat_<double> opt_m = KP * X; // KP = camera Matrix * Pose Matrix
+				double finalX = opt_m(0) / opt_m(2);
+				double finalY = opt_m(1) / opt_m(2);
+				A(k, j) = finalX;
+				A(k + vertexPoint.size(), j) = finalY;
+				//tempA[k + vertexPoint.size()][j] = finalY;
+				if (j == 0) {
+					b(k) = imgPoint[k].x;
+					b(k + vertexPoint.size()) = imgPoint[k].y;
+					//	tempB[k + vertexPoint.size()] = imgPoint[k].y;;
 				}
 			}
-
-			VectorXd x(numBS);
-			//Solving Ax = b issues with non-negative least square
-			NNLS<MatrixXd>::solve(A, b, x);
-			//x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
-			double totalSum = 0;
-			for (int i = 0; i < x.size(); i++) {
-				//wexpList.push_back(solution(i));
-				//dlib::clamp_function(x(i), 0, 1);
-				wexpList.push_back(x(i));
-				//totalSum += fabs(solution(i));
-			}
-			wexp = wexpList;
 		}
+
+		VectorXd x(numBS);
+		//Solving Ax = b issues with non-negative least square
+		NNLS<MatrixXd>::solve(A, b, x);
+		//x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
+		double totalSum = 0;
+		vector<double> wexpList;
+		for (int i = 0; i < x.size(); i++) {
+			//wexpList.push_back(solution(i));
+			//dlib::clamp_function(x(i), 0, 1);
+			wexpList.push_back(x(i));
+			//totalSum += fabs(solution(i));
+		}
+		wexptest = wexpList;
 		/*for (int i = 0; i < solution.size(); i++) {
 			wexpList[i] = wexpList[i] / totalSum;
 		}*/
 	}
-	return wexp;
+	return wexptest;
 }
 
 double roundFloat(double var)
@@ -535,20 +736,12 @@ void display(void)
 //	GLMmodel* original_obj = new GLMmodel();
 	//Store the neutral face vertex for reset the neutral face after drawing
 	vector<GLfloat> originalVertex;
-	vector<double> wexpList(numOfBlendshape), widList(numOfuser);
-	wexpList[0] = 0;
-	wexpList[1] = 1;
-	for (int i = 2; i < numOfBlendshape; i++) {
-		wexpList[i] = 0;
-	}
-	widList[0] = 0.99;
-	for (int i = 1; i < numOfuser; i++) {
-		widList[i] = 0;
-	}
-	vector<double> wid, wexp;
-	//wid = findWid(vertexPoint, wexpList, widList);
-	//wexp = findWExp(vertexPoint, wexpList, widList);
 
+	/*wid = findWid(vertexPoint);
+	wexp = findWExp(vertexPoint);*/
+	if (imgPoint.size() != 0) {
+		findWidAndWExp(vertexPoint);
+	}
 	////double sum = 0;
 	////for (int i = 0; i < wid.size(); i++) {
 	////	sum += wid[i];
@@ -564,17 +757,19 @@ void display(void)
 		average_face->vertices[3 * i + 1] = 0;
 		average_face->vertices[3 * i + 2] = 0;
 	}
-
-	if (wexpList.size() > 0) {
+	//for (int i = 0; i < numOfBlendshape; i++) {
+	//	finalWExp[i] = 0.0212765957;
+	//}
+	//for (int i = 0; i < numOfuser; i++) {
+	//	finalWid[i] = 0.5;
+	//}
+	if (finalWExp.size() > 0) {
 		for (int i = 0; i < numOfuser; i++) {
 			for (int j = 0; j < numOfBlendshape; j++) {
 				for (int k = 0; k < numOfVertex; k++) {
-					//double faceX = rank3Tensor[i][j]->vertices[3 * (k)];// -rank3Tensor[i][0]->vertices[3 * k];
-					//double faceY = rank3Tensor[i][j]->vertices[3 * (k)+1];// -rank3Tensor[i][0]->vertices[3 * k + 1];
-					//double faceZ = rank3Tensor[i][j]->vertices[3 * (k)+2];// -rank3Tensor[i][0]->vertices[3 * k + 2];
-					double faceX = initTensor(i, j, 3 * k) * widList[i] * wexpList[j];
-					double faceY = initTensor(i, j, 3 * k + 1) * widList[i] * wexpList[j];
-					double faceZ = initTensor(i, j, 3 * k + 2) * widList[i] * wexpList[j];
+					double faceX = initTensor(i, j, 3 * k) * finalWid[i] * finalWExp[j];
+					double faceY = initTensor(i, j, 3 * k + 1) * finalWid[i] * finalWExp[j];
+					double faceZ = initTensor(i, j, 3 * k + 2) * finalWid[i] * finalWExp[j];
 					//The first 3 item in the vertices is useless, so we start from 3 to set x, 4 to set y, 5 to set z in the vertices array
 					int idx = k + 1;
 					average_face->vertices[3 * idx] += faceX;
@@ -873,6 +1068,7 @@ int main(int argc, char** argv)
 	cout << "read blendshape" << endl;
 	//calculated_average_face = glmReadOBJ("shape_0_1.obj");
 	average_face = glmReadOBJ("shape_0_1.obj");
+	face_buffer = glmReadOBJ("shape_0_1.obj");
 	/*for (int j = 0; j < numOfuser; j++) {
 		vector<GLMmodel*> model;
 		for (int i = 0; i < numOfBlendshape; i++) {
