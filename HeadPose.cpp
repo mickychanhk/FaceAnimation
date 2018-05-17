@@ -79,9 +79,10 @@ int numOfuser = 2;
 int numOfBlendshape = 47;
 int numOfVertex = 11510;
 Tensor3<double> coreTensor;
-vector<Tensor2<double>> widAndWExp;
+vector<Tensor2<double>> UIdAndUExp;
 Tensor3<double> tempWExpTensor;
 Tensor3<double> tempWIdTensor;
+Tensor3<double> initTensor;
 double calDistanceDiff(vector<cv::Point2f> curPoints, vector<cv::Point2f> lastPoints) {
 	double variance = 0.0;
 	double sum = 0.0;
@@ -100,74 +101,98 @@ double calDistanceDiff(vector<cv::Point2f> curPoints, vector<cv::Point2f> lastPo
 	}
 	return variance;
 }
-vector<double> findWid(vector<int> vertexPoint) {
-	double rotss[9] = { 0 };
-	cv::Mat rotMss(3, 3, CV_64FC1, rotss);
-	// convert the vector to matrix
-	Rodrigues(rvec, rotMss);
-	double* _r = rotMss.ptr<double>();
-	double _pm[12] = { _r[0],_r[1],_r[2],tv[0],
-		_r[3],_r[4],_r[5],tv[1],
-		_r[6],_r[7],_r[8],tv[2] };
-	cv::Matx34d P(_pm);
-	cv::Mat KP = camMatrix * cv::Mat(P);
-	//double y0 = orignialFormula(wid, wexp, vertexPoint, KP);
-	int idx = 0;
-	vector<double> widList;
-	if (imgPoint.size() != 0) {
-		/*arma::vec b(imgPoint.size());
-		arma::mat C(imgPoint.size(), numOfBlendshape);*/
-		int numLM = 68;
-		MatrixXd A(numLM * 2, numOfuser);
-		VectorXd b(numLM * 2);
-		//for (int i = 0; i < numOfuser; i++) {
-
-		for (int j = 0; j < numOfuser; j++) {
-			for (int k = 0; k < imgPoint.size(); k++) {
-				double pX = rank3Tensor[j][0]->vertices[3 * vertexPoint[k]];
-				double pY = rank3Tensor[j][0]->vertices[3 * vertexPoint[k] + 1];
-				double pZ = rank3Tensor[j][0]->vertices[3 * vertexPoint[k] + 2];
-				/*double pX = tempWIdTensor(j, 0, vertexPoint[k]);
-				double pY = tempWIdTensor(j, 0, vertexPoint[k] + 1);
-				double pZ = tempWIdTensor(j, 0, vertexPoint[k] + 2);*/
-				cv::Mat_<double> X = (cv::Mat_<double>(4, 1)
-					<< pX,
-					pY,
-					pZ, 1.0);//convert point to vector
-				cv::Mat_<double> opt_m = KP * X; // KP = camera Matrix * Pose Matrix
-												 //cout << "point x" << opt_m(0) << "point y" << opt_m(1) << "point z" << opt_m(2) << endl;
-				double finalX = opt_m(0) / opt_m(2);
-				double finalY = opt_m(1) / opt_m(2);
-				A(k, j) = finalX;
-				A(k + vertexPoint.size(), j) = finalY;
-				b(k) = imgPoint[k].x;
-				b(k + vertexPoint.size()) = imgPoint[k].y;
-
-			}
-		}
-		VectorXd x(numOfuser);
-		//Solving Ax = b issues with non-negative least square
-		NNLS<MatrixXd>::solve(A, b, x);
-		//VectorXd solution = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
-		double totalSum = 0;
-		for (int i = 0; i < x.size(); i++) {
-			widList.push_back(x(i));
-			//widList.push_back(solution(i));
-			//totalSum += fabs(solution(i));
-		}
-		//for (int i = 0; i < x.size(); i++) {
-		//	widList.push_back(x(i));
-		//	/*widList.push_back(fabs(solution(i)));
-		//	totalSum += fabs(solution(i));*/
-		//}
-		/*for (int i = 0; i < solution.size(); i++) {
-			widList[i] = widList[i] / totalSum;
-		}*/
+vector<double> findWid(vector<int> vertexPoint, vector<double> wexp, vector<double> wid) {
+	cv::Mat_<double> transformationMatrix = (cv::Mat_<double>(3, 4) << 0.1, 0.1, 0.1, 0.1
+		, 0.1, 0.1, 0.1, 0.1,
+		0.1, 0.1, 0.1, 0.1);
+	vector<double> widtest(numOfuser), wexptest(numOfBlendshape);
+	widtest.push_back(1.0);
+	widtest.push_back(0);
+	wexptest.push_back(1);
+	for (int i = 1; i < numOfBlendshape; i++) {
+		wexptest.push_back(0);
 	}
-	return widList;
+	initTensor = initTensor.modeProduct(widtest, 0).modeProduct(wexptest, 1);
+
+	for (int k = 0; k < imgPoint.size(); k++) {
+		/*double pX = initTensor(0, 0, 3 * vertexPoint[k]);
+		double pY = initTensor(0, 0, 3 * vertexPoint[k] + 1);
+		double pZ = initTensor(0, 0, 3 * vertexPoint[k] + 2);*/
+		double pX = average_face->vertices[3 * vertexPoint[k]];
+		double pY = average_face->vertices[3 * vertexPoint[k] + 1];
+		double pZ = average_face->vertices[3 * vertexPoint[k] + 2];
+	}
+	//double rotss[9] = { 0 };
+	//cv::Mat rotMss(3, 3, CV_64FC1, rotss);
+	//// convert the vector to matrix
+	//Rodrigues(rvec, rotMss);
+	//double* _r = rotMss.ptr<double>();
+	//double _pm[12] = { _r[0],_r[1],_r[2],tv[0],
+	//	_r[3],_r[4],_r[5],tv[1],
+	//	_r[6],_r[7],_r[8],tv[2] };
+	//cv::Matx34d P(_pm);
+	//cv::Mat KP = camMatrix * cv::Mat(P);
+	////double y0 = orignialFormula(wid, wexp, vertexPoint, KP);
+	//int idx = 0;
+
+	//if (imgPoint.size() != 0) {
+	//	/*arma::vec b(imgPoint.size());
+	//	arma::mat C(imgPoint.size(), numOfBlendshape);*/
+	//	int numLM = 68;
+
+	//	//for (int i = 0; i < numOfuser; i++) {
+	//	for (int itr = 0; itr < 3; itr++) {
+	//		MatrixXd A(numLM * 2, numOfuser);
+	//		VectorXd b(numLM * 2);
+	//		vector<double> widList;
+	//		for (int j = 0; j < numOfuser; j++) {
+	//			for (int k = 0; k < imgPoint.size(); k++) {
+	//				/*double pX = rank3Tensor[j][0]->vertices[3 * vertexPoint[k]];
+	//				double pY = rank3Tensor[j][0]->vertices[3 * vertexPoint[k] + 1];
+	//				double pZ = rank3Tensor[j][0]->vertices[3 * vertexPoint[k] + 2];*/
+	//				double pX = initTensor(j, 0, 3 * vertexPoint[k])* wexp[0] * wid[j];
+	//				double pY = initTensor(j, 0, 3 * vertexPoint[k] + 1) * wexp[0] * wid[j];
+	//				double pZ = initTensor(j, 0, 3 * vertexPoint[k] + 2) * wexp[0] * wid[j];
+	//				cv::Mat_<double> X = (cv::Mat_<double>(4, 1)
+	//					<< pX,
+	//					pY,
+	//					pZ, 1.0);//convert point to vector
+	//				cv::Mat_<double> opt_m = KP * X; // KP = camera Matrix * Pose Matrix
+	//												 //cout << "point x" << opt_m(0) << "point y" << opt_m(1) << "point z" << opt_m(2) << endl;
+	//				double finalX = opt_m(0) / opt_m(2);
+	//				double finalY = opt_m(1) / opt_m(2);
+	//				A(k, j) = finalX;
+	//				A(k + vertexPoint.size(), j) = finalY;
+	//				b(k) = imgPoint[k].x;
+	//				b(k + vertexPoint.size()) = imgPoint[k].y;
+
+	//			}
+	//		}
+	//		VectorXd x(numOfuser);
+	//		//Solving Ax = b issues with non-negative least square
+	//		NNLS<MatrixXd>::solve(A, b, x);
+	//		//x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
+	//		double totalSum = 0;
+	//		for (int i = 0; i < x.size(); i++) {
+	//			widList.push_back(x(i));
+	//			//widList.push_back(solution(i));
+	//			//totalSum += fabs(solution(i));
+	//		}
+	//		wid = widList;
+	//	}
+	//	//for (int i = 0; i < x.size(); i++) {
+	//	//	widList.push_back(x(i));
+	//	//	/*widList.push_back(fabs(solution(i)));
+	//	//	totalSum += fabs(solution(i));*/
+	//	//}
+	//	/*for (int i = 0; i < solution.size(); i++) {
+	//		widList[i] = widList[i] / totalSum;
+	//	}*/
+	//}
+	return wid;
 }
 
-vector<double> findWExp(vector<int> vertexPoint) {
+vector<double> findWExp(vector<int> vertexPoint, vector<double> wexp, vector<double> wid) {
 	double rotss[9] = { 0 };
 	cv::Mat rotMss(3, 3, CV_64FC1, rotss);
 	// convert the vector to matrix
@@ -179,55 +204,59 @@ vector<double> findWExp(vector<int> vertexPoint) {
 	cv::Matx34d P(_pm);
 	cv::Mat KP = camMatrix * cv::Mat(P);
 	int idx = 0;
-	vector<double> wexpList;
+
 	if (imgPoint.size() != 0) {
 		int numBS = 47;
 		int numLM = 68;
-		MatrixXd A(numLM * 2, numBS);
-		VectorXd b(numLM * 2);
-		//for (int i = 0; i < numOfuser; i++) {
-		for (int j = 0; j < numBS; j++) {
-			for (int k = 0; k < imgPoint.size(); k++) {
-				double pX = rank3Tensor[0][j]->vertices[3 * vertexPoint[k]];
-				double pY = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 1];
-				double pZ = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 2];
-				//double pX = tempWExpTensor(0, j, vertexPoint[k]);// -tempWExpTensor(0, 0, vertexPoint[k]);
-				//double pY = tempWExpTensor(0, j, vertexPoint[k] + 1);// -tempWExpTensor(0, 0, vertexPoint[k] + 1);
-				//double pZ = tempWExpTensor(0, j, vertexPoint[k] + 2);// -tempWExpTensor(0, 0, vertexPoint[k] + 2);
-				cv::Mat_<double> X = (cv::Mat_<double>(4, 1)
-					<< pX,
-					pY,
-					pZ, 1.0);//convert point to vector
-				cv::Mat_<double> opt_m = KP * X; // KP = camera Matrix * Pose Matrix
-				double finalX = opt_m(0) / opt_m(2);
-				double finalY = opt_m(1) / opt_m(2);
-				A(k, j) = finalX;
-				A(k + vertexPoint.size(), j) = finalY;
-				//tempA[k + vertexPoint.size()][j] = finalY;
-				if (j == 0) {
-					b(k) = imgPoint[k].x;
-					b(k + vertexPoint.size()) = imgPoint[k].y;
-					//	tempB[k + vertexPoint.size()] = imgPoint[k].y;;
+		for (int itr = 0; itr < 3; itr++) {
+			vector<double> wexpList;
+			MatrixXd A(numLM * 2, numBS);
+			VectorXd b(numLM * 2);
+			//for (int i = 0; i < numOfuser; i++) {
+			for (int j = 0; j < numBS; j++) {
+				for (int k = 0; k < imgPoint.size(); k++) {
+					/*	double pX = rank3Tensor[0][j]->vertices[3 * vertexPoint[k]];
+						double pY = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 1];
+						double pZ = rank3Tensor[0][j]->vertices[3 * vertexPoint[k] + 2];*/
+					double pX = initTensor(0, j, 3 * vertexPoint[k]) * wexp[j] * wid[0];// -tempWExpTensor(0, 0, vertexPoint[k]);
+					double pY = initTensor(0, j, 3 * vertexPoint[k] + 1) * wexp[j] * wid[0];// -tempWExpTensor(0, 0, vertexPoint[k] + 1);
+					double pZ = initTensor(0, j, 3 * vertexPoint[k] + 2) * wexp[j] * wid[0];// -tempWExpTensor(0, 0, vertexPoint[k] + 2);
+					cv::Mat_<double> X = (cv::Mat_<double>(4, 1)
+						<< pX,
+						pY,
+						pZ, 1.0);//convert point to vector
+					cv::Mat_<double> opt_m = KP * X; // KP = camera Matrix * Pose Matrix
+					double finalX = opt_m(0) / opt_m(2);
+					double finalY = opt_m(1) / opt_m(2);
+					A(k, j) = finalX;
+					A(k + vertexPoint.size(), j) = finalY;
+					//tempA[k + vertexPoint.size()][j] = finalY;
+					if (j == 0) {
+						b(k) = imgPoint[k].x;
+						b(k + vertexPoint.size()) = imgPoint[k].y;
+						//	tempB[k + vertexPoint.size()] = imgPoint[k].y;;
+					}
 				}
 			}
-		}
 
-		VectorXd x(numBS);
-		//Solving Ax = b issues with non-negative least square
-		NNLS<MatrixXd>::solve(A, b, x);
-		//VectorXd solution = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
-		double totalSum = 0;
-		for (int i = 0; i < x.size(); i++) {
-			//wexpList.push_back(solution(i));
-			//dlib::clamp_function(x(i), 0, 1);
-			wexpList.push_back(x(i));
-			//totalSum += fabs(solution(i));
+			VectorXd x(numBS);
+			//Solving Ax = b issues with non-negative least square
+			NNLS<MatrixXd>::solve(A, b, x);
+			//x = A.jacobiSvd(ComputeThinU | ComputeThinV).solve(b);
+			double totalSum = 0;
+			for (int i = 0; i < x.size(); i++) {
+				//wexpList.push_back(solution(i));
+				//dlib::clamp_function(x(i), 0, 1);
+				wexpList.push_back(x(i));
+				//totalSum += fabs(solution(i));
+			}
+			wexp = wexpList;
 		}
 		/*for (int i = 0; i < solution.size(); i++) {
 			wexpList[i] = wexpList[i] / totalSum;
 		}*/
 	}
-	return wexpList;
+	return wexp;
 }
 
 double roundFloat(double var)
@@ -417,170 +446,181 @@ void display(void)
 
 	gluLookAt(0, 0, 0, 0, 0, 1, 0, -1, 0);
 
-
+#pragma region vertex index  
 	vector<cv::Point3f > modelPoints;
 	vector<int> vertexPoint;
-	vertexPoint.push_back(8638);	 // l eye (v 8083)
-	vertexPoint.push_back(8091);
-	vertexPoint.push_back(8467);
-	vertexPoint.push_back(8068);
-	vertexPoint.push_back(8928);
-	vertexPoint.push_back(8874);
+	vertexPoint.push_back(2179);	 // l eye (v 8083) shape.part(44).x(), shape.part(44).y()));	 // l eye (v 314)
+	vertexPoint.push_back(6886);	//			       shape.part(45).x(), shape.part(45).y()));	// l eye (v 314)
+	vertexPoint.push_back(2044);	//			       shape.part(46).x(), shape.part(46).y()));	// l eye (v 314)
+	vertexPoint.push_back(6825);	//			       shape.part(47).x(), shape.part(47).y()));	// l eye (v 314)
+	vertexPoint.push_back(7228);	//			       shape.part(48).x(), shape.part(48).y()));	// l eye (v 314)
+	vertexPoint.push_back(7246);	//			       shape.part(49).x(), shape.part(49).y()));	// l eye (v 314)
 
-	vertexPoint.push_back(2325);	 // r eye (v 2343)
-	vertexPoint.push_back(2538);
-	vertexPoint.push_back(2710);
-	vertexPoint.push_back(3350);
-	vertexPoint.push_back(3216);
-	vertexPoint.push_back(3158);
+	vertexPoint.push_back(576);	 // r eye (v 2343)  shape.part(36).x(), shape.part(36).y()));	 // r eye (v 0)
+	vertexPoint.push_back(618);	//					shape.part(37).x(), shape.part(37).y()));	 // r eye (v 0)
+	vertexPoint.push_back(613);	//					shape.part(38).x(), shape.part(38).y()));	 // r eye (v 0)
+	vertexPoint.push_back(754);	//					shape.part(39).x(), shape.part(39).y()));	 // r eye (v 0)
+	vertexPoint.push_back(4352);	//					shape.part(40).x(), shape.part(40).y()));	 // r eye (v 0)
+	vertexPoint.push_back(4333);	//					shape.part(41).x(), shape.part(41).y()));	 // r eye (v 0)
 
-	vertexPoint.push_back(8710);	 //nose (v 1264)
-	vertexPoint.push_back(11151);
-	vertexPoint.push_back(1235);
-	vertexPoint.push_back(1197);
-	vertexPoint.push_back(1549);
-	vertexPoint.push_back(1553);
-	vertexPoint.push_back(1263);
-	vertexPoint.push_back(7328);
-	vertexPoint.push_back(7321);
+	vertexPoint.push_back(4241);	 //nose (v 1264) shape.part(27).x(), shape.part(27).y()));	 //nose (v 1879)
+	vertexPoint.push_back(9198);	//				 shape.part(28).x(), shape.part(28).y()));	 //nose (v 1879)
+	vertexPoint.push_back(6293);	//				 shape.part(29).x(), shape.part(29).y()));	 //nose (v 1879)
+	vertexPoint.push_back(8177);	//				 shape.part(30).x(), shape.part(30).y()));	 //nose (v 1879)
+	vertexPoint.push_back(10491);	//				 shape.part(31).x(), shape.part(31).y()));	 //nose (v 1879)
+	vertexPoint.push_back(355);	//				 shape.part(32).x(), shape.part(32).y()));	 //nose (v 1879)
+	vertexPoint.push_back(3563);	//				 shape.part(33).x(), shape.part(33).y()));	 //nose (v 1879)
+	vertexPoint.push_back(1780);	//				 shape.part(34).x(), shape.part(34).y()));	 //nose (v 1879)
+	vertexPoint.push_back(6462);	//				 shape.part(35).x(), shape.part(35).y()));	 //nose (v 1879)
 
-	vertexPoint.push_back(7381);	 // l mouth (v 6601) or line 6605
-	vertexPoint.push_back(6637);	 // l mouth (v 6601) or line 6605
-	vertexPoint.push_back(6683);	 // l mouth (v 6601) or line 6605
-	vertexPoint.push_back(6601);	 // l mouth (v 6601) or line 6605
-	vertexPoint.push_back(6747);	 // l mouth (v 6601) or line 6605
-	vertexPoint.push_back(6565);	 // l mouth (v 6601) or line 6605
-	vertexPoint.push_back(6523);	 // l mouth (v 6601) or line 6605
+	vertexPoint.push_back(1601);	 // l mouth shape.part(53).x(), shape.part(51).y()));	 // l mouth (v 1502)
+	vertexPoint.push_back(2812);	 // l mouth shape.part(54).x(), shape.part(52).y()));	 // l mouth (v 1502)
+	vertexPoint.push_back(6220);	 // l mouth shape.part(55).x(), shape.part(53).y()));	 // l mouth (v 1502)
+	vertexPoint.push_back(1594);	 // l mouth shape.part(56).x(), shape.part(54).y()));	 // l mouth (v 1502)
+	vertexPoint.push_back(6155);	 // l mouth shape.part(57).x(), shape.part(55).y()));	 // l mouth (v 1502)
+	vertexPoint.push_back(6076);	 // l mouth shape.part(58).x(), shape.part(56).y()));	 // l mouth (v 1502)
+	vertexPoint.push_back(6074);	 // l mouth shape.part(59).x(), shape.part(57).y()));	 // l mouth (v 1502)
 
-	vertexPoint.push_back(6551);
-	vertexPoint.push_back(6632);
-	vertexPoint.push_back(6730);
-	vertexPoint.push_back(6531);
-	vertexPoint.push_back(6522);
+	vertexPoint.push_back(6201);	//	 shape.part(62).x(), shape.part(62).y()));	 // l mouth (v 1502)
+	vertexPoint.push_back(6092);	//	 shape.part(63).x(), shape.part(63).y()));	 // l mouth (v 1502)
+	vertexPoint.push_back(1649);	//	 shape.part(64).x(), shape.part(64).y()));	 // l mouth (v 1502)
+	vertexPoint.push_back(6056);	//	 shape.part(65).x(), shape.part(65).y()));	 // l mouth (v 1502)
+	vertexPoint.push_back(6064);	//	 shape.part(66).x(), shape.part(66).y()));	 // l mouth (v 1502)
 
-	vertexPoint.push_back(832);		 // r mouth (v 728) or line 732 
-	vertexPoint.push_back(879);		 // r mouth (v 728) or line 732 
-	vertexPoint.push_back(728);		 // r mouth (v 728) or line 732 
-	vertexPoint.push_back(754);		 // r mouth (v 728) or line 732 
-	vertexPoint.push_back(866);		 // r mouth (v 728) or line 732 
+	vertexPoint.push_back(3211);		 // r mouth shape.part(50).x(), shape.part(50).y()));	 // r mouth (v 695)
+	vertexPoint.push_back(3239);		 // r mouth shape.part(49).x(), shape.part(49).y()));	 // r mouth (v 695)
+	vertexPoint.push_back(3184);		 // r mouth shape.part(48).x(), shape.part(48).y()));	 // r mouth (v 695)
+	vertexPoint.push_back(3194);		 // r mouth shape.part(59).x(), shape.part(59).y()));	 // r mouth (v 695)
+	vertexPoint.push_back(10325);		 // r mouth shape.part(58).x(), shape.part(58).y()));	 // r mouth (v 695)
 
-	vertexPoint.push_back(825);		 // r mouth (v 728) or line 732 
-	vertexPoint.push_back(893);		 // r mouth (v 728) or line 732 
-	vertexPoint.push_back(876);		 // r mouth (v 728) or line 732 
+	vertexPoint.push_back(3210);		 // r mouth shape.part(61).x(), shape.part(61).y()));	 // r mouth (v 695)
+	vertexPoint.push_back(254);		 // r mouth shape.part(60).x(), shape.part(60).y()));	 // r mouth (v 695)
+	vertexPoint.push_back(10326);		 // r mouth shape.part(67).x(), shape.part(67).y()));	 // r mouth (v 695)
 
-	vertexPoint.push_back(9374);	 // l contour (v 8699)
-	vertexPoint.push_back(11176);	 // l contour (v 8699)
-	vertexPoint.push_back(7560);	 // l contour (v 8699)
-	vertexPoint.push_back(7900);	 // l contour (v 8699)
-	vertexPoint.push_back(7646);	 // l contour (v 8699)
-	vertexPoint.push_back(7718);	 // l contour (v 8699)
-	vertexPoint.push_back(7836);	 // l contour (v 8699)
-	vertexPoint.push_back(7579);	 // l contour (v 8699)
-	vertexPoint.push_back(1690);	 // l contour (v 8699)
+	vertexPoint.push_back(6880);	 // l contour shape.part(16).x(), shape.part(16).y()));	 	// l coutour (v 2011)
+	vertexPoint.push_back(7078);	 // l contour shape.part(15).x(), shape.part(15).y()));	 	// l coutour (v 2011)
+	vertexPoint.push_back(2436);	 // l contour shape.part(14).x(), shape.part(14).y()));	 	// l coutour (v 2011)
+	vertexPoint.push_back(2557);	 // l contour shape.part(13).x(), shape.part(13).y()));	 	// l coutour (v 2011)
+	vertexPoint.push_back(6748);	 // l contour shape.part(12).x(), shape.part(12).y()));	 	// l coutour (v 2011)
+	vertexPoint.push_back(9088);	 // l contour shape.part(11).x(), shape.part(11).y()));	 	// l coutour (v 2011)
+	vertexPoint.push_back(6504);	 // l contour shape.part(10).x(), shape.part(10).y()));	 	// l coutour (v 2011)
+	vertexPoint.push_back(6541);	 // l contour shape.part(9).x(), shape.part(9).y()));	 	    // l coutour (v 2011)
+	vertexPoint.push_back(9053);	 // l contour shape.part(8).x(), shape.part(8).y()));	 	    // l coutour (v 2011)
 
-	vertexPoint.push_back(3917);	 // r contour (v 3484)
-	vertexPoint.push_back(5490);	 // r contour (v 3484)
-	vertexPoint.push_back(2245);	 // r contour (v 3484)
-	vertexPoint.push_back(1776);	 // r contour (v 3484)
-	vertexPoint.push_back(1805);	 // r contour (v 3484)
-	vertexPoint.push_back(2079);	 // r contour (v 3484)
-	vertexPoint.push_back(1671);	 // r contour (v 3484)
-	vertexPoint.push_back(1824);	 // r contour (v 3484)
+	vertexPoint.push_back(646);	 // r contour (v 3484) shape.part(0).x(), shape.part(0).y()));	 	// r coutour (v 1138
+	vertexPoint.push_back(4194);	 // r contour (v 3484) shape.part(1).x(), shape.part(1).y()));	 	// r coutour (v 1138)
+	vertexPoint.push_back(3917);	 // r contour (v 3484) shape.part(2).x(), shape.part(2).y()));	 	// r coutour (v 1138)
+	vertexPoint.push_back(3638);	 // r contour (v 3484) shape.part(3).x(), shape.part(3).y()));	 	// r coutour (v 1138)
+	vertexPoint.push_back(10592);	 // r contour (v 3484) shape.part(4).x(), shape.part(4).y()));	 	// r coutour (v 1138)
+	vertexPoint.push_back(11486);	 // r contour (v 3484) shape.part(5).x(), shape.part(5).y()));	 	// r coutour (v 1138)
+	vertexPoint.push_back(10537);	 // r contour (v 3484) shape.part(6).x(), shape.part(6).y()));	 	// r coutour (v 1138)
+	vertexPoint.push_back(477);	 // r contour (v 3484) shape.part(7).x(), shape.part(7).y()));	 	// r coutour (v 1138)
 
-	vertexPoint.push_back(2712);	 // r eyebrow(v 1138)
-	vertexPoint.push_back(2495);	 // r eyebrow(v 1138)
-	vertexPoint.push_back(2700);	 // r eyebrow(v 1138)
-	vertexPoint.push_back(2698);	 // r eyebrow(v 1138)
-	vertexPoint.push_back(2481);	 // r eyebrow(v 1138)
+	vertexPoint.push_back(4272);	 // r eyebrow(v 1138) shape.part(17).x(), shape.part(17).y()));	 	// r eyebrow(v 1138)
+	vertexPoint.push_back(4296);	 // r eyebrow(v 1138) shape.part(18).x(), shape.part(18).y()));	 	// r eyebrow(v 1138)
+	vertexPoint.push_back(4451);	 // r eyebrow(v 1138) shape.part(19).x(), shape.part(19).y()));	 	// r eyebrow(v 1138)
+	vertexPoint.push_back(4443);	 // r eyebrow(v 1138) shape.part(20).x(), shape.part(20).y()));	 	// r eyebrow(v 1138)
+	vertexPoint.push_back(4295);	 // r eyebrow(v 1138) shape.part(21).x(), shape.part(21).y()));	 	// r eyebrow(v 1138)
 
-	vertexPoint.push_back(8814);	 // l eyebrow(v 1138)
-	vertexPoint.push_back(8815);	 // l eyebrow(v 1138)
-	vertexPoint.push_back(8830);	 // l eyebrow(v 1138)
-	vertexPoint.push_back(8773);	 // l eyebrow(v 1138)
-	vertexPoint.push_back(8776);	 // l eyebrow(v 1138)
+	vertexPoint.push_back(1045);	 // l eyebrow(v 1138) shape.part(22).x(), shape.part(22).y()));
+	vertexPoint.push_back(2217);	 // l eyebrow(v 1138) shape.part(23).x(), shape.part(23).y()));
+	vertexPoint.push_back(7347);	 // l eyebrow(v 1138) shape.part(24).x(), shape.part(24).y()));
+	vertexPoint.push_back(7338);	 // l eyebrow(v 1138) shape.part(25).x(), shape.part(25).y()));
+	vertexPoint.push_back(2151);	 // l eyebrow(v 1138) shape.part(26).x(), shape.part(26).y()));
+#pragma endregion vertex index
 
-									 //modelPoints.push_back(cv::Point3f(0.294959, 0.493100, 0.389258));	// l eye (v 8083)
-									 //modelPoints.push_back(cv::Point3f(-0.263214, 0.495387, 0.373535));	// r eye (v 2343)
-									 //modelPoints.push_back(cv::Point3f(0.029220, 0.188548, 0.673340));	//nose (v 1264)
-									 //modelPoints.push_back(cv::Point3f(0.291080, -0.127212, 0.454637));	// l mouth (v 6601) or line 6605
-									 //modelPoints.push_back(cv::Point3f(-0.171941, -0.121142, 0.518103));	// r mouth (v 728) or line 732 
-									 //modelPoints.push_back(cv::Point3f(0.857392, 0.459262, -0.547478));	// l ear (v 8699)
-									 //modelPoints.push_back(cv::Point3f(-0.853804, 0.425016, -0.562550));		// r ear (v 3484)
-	for (int i = 0; i < vertexPoint.size(); i++) {
-		double x = roundFloat(empty_face[0]->vertices[3 * vertexPoint[i]]);
-		double y = roundFloat(empty_face[0]->vertices[3 * vertexPoint[i] + 1]);
-		double z = roundFloat(empty_face[0]->vertices[3 * vertexPoint[i] + 2]);
+
+
+
+//	GLMmodel* original_obj = new GLMmodel();
+	//Store the neutral face vertex for reset the neutral face after drawing
+	vector<GLfloat> originalVertex;
+	vector<double> wexpList(numOfBlendshape), widList(numOfuser);
+	wexpList[0] = 0;
+	wexpList[1] = 1;
+	for (int i = 2; i < numOfBlendshape; i++) {
+		wexpList[i] = 0;
+	}
+	widList[0] = 0.99;
+	for (int i = 1; i < numOfuser; i++) {
+		widList[i] = 0;
+	}
+	vector<double> wid, wexp;
+	//wid = findWid(vertexPoint, wexpList, widList);
+	//wexp = findWExp(vertexPoint, wexpList, widList);
+
+	////double sum = 0;
+	////for (int i = 0; i < wid.size(); i++) {
+	////	sum += wid[i];
+	////}
+	////cout << sum << endl;
+	////cout << sum << endl;
+	////cout << opt_wid << endl;
+	for (int i = 1; i <= numOfVertex; i++) {
+		originalVertex.push_back(average_face->vertices[3 * i]);
+		originalVertex.push_back(average_face->vertices[3 * i + 1]);
+		originalVertex.push_back(average_face->vertices[3 * i + 2]);
+		average_face->vertices[3 * i] = 0;
+		average_face->vertices[3 * i + 1] = 0;
+		average_face->vertices[3 * i + 2] = 0;
+	}
+
+	if (wexpList.size() > 0) {
+		for (int i = 0; i < numOfuser; i++) {
+			for (int j = 0; j < numOfBlendshape; j++) {
+				for (int k = 0; k < numOfVertex; k++) {
+					//double faceX = rank3Tensor[i][j]->vertices[3 * (k)];// -rank3Tensor[i][0]->vertices[3 * k];
+					//double faceY = rank3Tensor[i][j]->vertices[3 * (k)+1];// -rank3Tensor[i][0]->vertices[3 * k + 1];
+					//double faceZ = rank3Tensor[i][j]->vertices[3 * (k)+2];// -rank3Tensor[i][0]->vertices[3 * k + 2];
+					double faceX = initTensor(i, j, 3 * k) * widList[i] * wexpList[j];
+					double faceY = initTensor(i, j, 3 * k + 1) * widList[i] * wexpList[j];
+					double faceZ = initTensor(i, j, 3 * k + 2) * widList[i] * wexpList[j];
+					//The first 3 item in the vertices is useless, so we start from 3 to set x, 4 to set y, 5 to set z in the vertices array
+					int idx = k + 1;
+					average_face->vertices[3 * idx] += faceX;
+					average_face->vertices[3 * idx + 1] += faceY;
+					average_face->vertices[3 * idx + 2] += faceZ;
+				}
+			}
+		}
+	}
+	vector<int> calculatePose;
+	calculatePose.push_back(1967);
+	calculatePose.push_back(542);
+	calculatePose.push_back(6328);
+	calculatePose.push_back(1594);	 // l mouth (v 6601) or line 6605
+	calculatePose.push_back(187);		 // r mouth (v 728) or line 732 
+	calculatePose.push_back(6878);	 // l contour (v 8699)
+	calculatePose.push_back(685);	 // r contour (v 3484)
+	for (int i = 0; i < calculatePose.size(); i++) {
+		double x = roundFloat(average_face->vertices[3 * calculatePose[i]]);
+		double y = roundFloat(average_face->vertices[3 * calculatePose[i] + 1]);
+		double z = roundFloat(average_face->vertices[3 * calculatePose[i] + 2]);
 		modelPoints.push_back(cv::Point3d(
 			x,
 			y,
 			z
 		));
 	}
-	op = cv::Mat(modelPoints);
+	op_min = cv::Mat(modelPoints);
 	loadNext();
+	// draw the 3D head model
+	glColor4f(1, 1, 1, 0.75);
 
-	// put the object in the right position in space - make sure that the 3D head will move with the web cam detected face
 	cv::Vec3d tvv(tv[0], tv[1], tv[2]);
 	glTranslated(tvv[0], tvv[1], tvv[2]);
 	//glTranslated(0, 0, 5);
 	// control the head rotation
 	double _d[16] = { rot[0],rot[1],rot[2],0,
-						rot[3],rot[4],rot[5],0,
-						rot[6],rot[7],rot[8],0,
-						0,	   0,	  0		,1 };
-
+		rot[3],rot[4],rot[5],0,
+		rot[6],rot[7],rot[8],0,
+		0,	   0,	  0		,1 };
 	glMultMatrixd(_d);
-	GLMmodel* original_obj = new GLMmodel();
-	//Store the neutral face vertex for reset the neutral face after drawing
-	vector<GLfloat> originalVertex;
-	vector<double> wexp = findWExp(vertexPoint);
-	vector<double> wid = findWid(vertexPoint);
-	//double sum = 0;
-	//for (int i = 0; i < wid.size(); i++) {
-	//	sum += wid[i];
-	//}
-	//cout << sum << endl;
-	//cout << sum << endl;
-	//cout << opt_wid << endl;
-	for (int i = 1; i <= numOfVertex; i++) {
-		originalVertex.push_back(empty_face[0]->vertices[3 * i]);
-		originalVertex.push_back(empty_face[0]->vertices[3 * i + 1]);
-		originalVertex.push_back(empty_face[0]->vertices[3 * i + 2]);
-		empty_face[0]->vertices[3 * i] = 0;
-		empty_face[0]->vertices[3 * i + 1] = 0;
-		empty_face[0]->vertices[3 * i + 2] = 0;
-	}
-
-	if (wexp.size() > 0) {
-		for (int i = 0; i < numOfuser; i++) {
-			for (int j = 0; j < numOfBlendshape; j++) {
-				for (int k = 0; k < numOfVertex; k++) {
-					double faceX = rank3Tensor[i][j]->vertices[3 * k];// -rank3Tensor[i][0]->vertices[3 * k];
-					double faceY = rank3Tensor[i][j]->vertices[3 * k + 1];// -rank3Tensor[i][0]->vertices[3 * k + 1];
-					double faceZ = rank3Tensor[i][j]->vertices[3 * k + 2];// -rank3Tensor[i][0]->vertices[3 * k + 2];
-					/*double faceX = coreTensor(i, j, k);
-					double faceY = coreTensor(i, j, k + 1);
-					double faceZ = coreTensor(i, j, k + 2);*/
-					/*double vertexX = faceX   * wid[i] * wexp[j];
-					double vertexY = faceY   * wid[i] * wexp[j];
-					double vertexZ = faceZ   * wid[i] * wexp[j];*/
-					/*cout << vertexX << endl;
-					cout << vertexX << endl;
-					cout << vertexX << endl;*/
-					empty_face[0]->vertices[3 * k] += faceX * wid[i] * wexp[j];
-					empty_face[0]->vertices[3 * k + 1] += faceY * wid[i] * wexp[j];
-					empty_face[0]->vertices[3 * k + 2] += faceZ * wid[i] * wexp[j];
-				}
-			}
-		}
-	}
-	// draw the 3D head model
-	glColor4f(1, 1, 1, 0.75);
-	glmDraw(empty_face[0], GLM_SMOOTH);
+	glmDraw(average_face, GLM_SMOOTH);
 
 	//Reset the neutral face to the orignial
 	for (int i = 0; i < originalVertex.size(); i++) {
-		empty_face[0]->vertices[3 + i] = originalVertex[i];
+		average_face->vertices[3 + i] = originalVertex[i];
 	}
 
 	//----------Axes
@@ -643,20 +683,20 @@ void loadNext() {
 			cerr << "can't read " << buf << endl; return;
 		}*/
 		vector<cv::Point2f> tempPt;
-		tempPt.push_back(cv::Point(shape.part(45).x(), shape.part(45).y()));
-		tempPt.push_back(cv::Point(shape.part(37).x(), shape.part(37).y()));
-		tempPt.push_back(cv::Point(shape.part(33).x(), shape.part(33).y()));
-		tempPt.push_back(cv::Point(shape.part(54).x(), shape.part(54).y()));
-		tempPt.push_back(cv::Point(shape.part(48).x(), shape.part(48).y()));
-		tempPt.push_back(cv::Point(shape.part(16).x(), shape.part(16).y()));
-		tempPt.push_back(cv::Point(shape.part(0).x(), shape.part(0).y()));
+		tempPt.push_back(cv::Point(shape.part(24).x(), shape.part(24).y())); // l eye (v 314)
+		tempPt.push_back(cv::Point(shape.part(19).x(), shape.part(19).y()));// r eye (v 0)
+		tempPt.push_back(cv::Point(shape.part(33).x(), shape.part(33).y()));//nose (v 1879)
+		tempPt.push_back(cv::Point(shape.part(54).x(), shape.part(54).y()));// l mouth (v 1502)
+		tempPt.push_back(cv::Point(shape.part(48).x(), shape.part(48).y())); // r mouth (v 695)
+		tempPt.push_back(cv::Point(shape.part(16).x(), shape.part(16).y()));// l coutour (v 2011)
+		tempPt.push_back(cv::Point(shape.part(0).x(), shape.part(0).y()));// r coutour (v 1138
 
-		imagePoints.push_back(cv::Point(shape.part(44).x(), shape.part(44).y()));	 // l eye (v 314)
+		imagePoints.push_back(cv::Point(shape.part(42).x(), shape.part(42).y()));	 // l eye (v 314)
+		imagePoints.push_back(cv::Point(shape.part(43).x(), shape.part(43).y()));	// l eye (v 314)
+		imagePoints.push_back(cv::Point(shape.part(44).x(), shape.part(44).y()));	// l eye (v 314)
 		imagePoints.push_back(cv::Point(shape.part(45).x(), shape.part(45).y()));	// l eye (v 314)
 		imagePoints.push_back(cv::Point(shape.part(46).x(), shape.part(46).y()));	// l eye (v 314)
 		imagePoints.push_back(cv::Point(shape.part(47).x(), shape.part(47).y()));	// l eye (v 314)
-		imagePoints.push_back(cv::Point(shape.part(48).x(), shape.part(48).y()));	// l eye (v 314)
-		imagePoints.push_back(cv::Point(shape.part(49).x(), shape.part(49).y()));	// l eye (v 314)
 
 
 		imagePoints.push_back(cv::Point(shape.part(36).x(), shape.part(36).y()));	 // r eye (v 0)
@@ -738,7 +778,7 @@ void loadNext() {
 			std::swap(prevLandmarkPts, imagePoints);
 		}
 		double variance = calDistanceDiff(tempPt, prevImgPoint);
-		if (variance < 0.3) {
+		if (variance < 0.5) {
 			std::swap(prevImgPoint, tempPt);
 		}
 		cv::Mat ip = cv::Mat(imagePoints);
@@ -798,31 +838,31 @@ void loadWithPoints(cv::Mat& ip, cv::Mat& img, vector<cv::Point2f> imagePoints) 
 
 	//reproject object points - check validity of found projection matrix
 	//op - vertex point in 3D mesh, ip - 2D landmark of the images
-	//for (int i = 0; i < op.rows; i++) {
-	//	
-	//	cv::Mat_<double> X = (cv::Mat_<double>(4, 1) << op.at<float>(i, 0), op.at<float>(i, 1), op.at<float>(i, 2), 1.0);
-	//	//cout << "object point " << X << endl;
-	//	cv::Mat_<double> opt_p = KP * X;
-	//	//cout << "object point " << opt_p << endl;
-	//	double TwoDopX = opt_p(0) / opt_p(2);
-	//	double TwoDopY = opt_p(1) / opt_p(2);
-	//	/*double imageX = imagePoints[i].x;
-	//	double imageY = imagePoints[i].y;*/
-	//	//cout << " opX :" << TwoDopX << " opY :" << TwoDopY << endl;
-	//	/*	double eimX = findEimX(opt_p(0), imageX, opt_p(2),max_d, img.cols / 2.0);
-	//		double eimY = findEimX(opt_p(1), imageY, opt_p(2), max_d, img.rows / 2.0);
-	//		cout << "eimX :" << eimX << " eimY :" << eimY << endl;
-	//		cout << "ein " << eimX + eimY << endl;
-	//		cout << " opX :" << TwoDopX << " opY :" << TwoDopY << endl;
-	//		cout << " imgX :" << imageX << " imgY :" << imageY << endl;*/
-	//		//double diffX = imageX - TwoDopX;
-	//		//double diffY = imageY - TwoDopX;
-	//		/*double dist = sqrt(pow((imageX - TwoDopX), 2) + pow((imageY - TwoDopY), 2));
-	//		cout << "distance :" << dist << " X:" << TwoDopX << " Y:" << TwoDopY  << endl;*/
-	//	//cv::Point2f opt_p_img(TwoDopX, TwoDopY);
-	//	//cout << "object point reproj " << opt_p_img << endl;
-	//	//circle(img, opt_p_img, 4, cv::Scalar(0, 0, 255), 1);
-	//}
+	for (int i = 0; i < op_min.rows; i++) {
+
+		cv::Mat_<double> X = (cv::Mat_<double>(4, 1) << op_min.at<float>(i, 0), op_min.at<float>(i, 1), op_min.at<float>(i, 2), 1.0);
+		//cout << "object point " << X << endl;
+		cv::Mat_<double> opt_p = KP * X;
+		//cout << "object point " << opt_p << endl;
+		double TwoDopX = opt_p(0) / opt_p(2);
+		double TwoDopY = opt_p(1) / opt_p(2);
+		/*double imageX = imagePoints[i].x;
+		double imageY = imagePoints[i].y;*/
+		//cout << " opX :" << TwoDopX << " opY :" << TwoDopY << endl;
+		/*	double eimX = findEimX(opt_p(0), imageX, opt_p(2),max_d, img.cols / 2.0);
+			double eimY = findEimX(opt_p(1), imageY, opt_p(2), max_d, img.rows / 2.0);
+			cout << "eimX :" << eimX << " eimY :" << eimY << endl;
+			cout << "ein " << eimX + eimY << endl;
+			cout << " opX :" << TwoDopX << " opY :" << TwoDopY << endl;
+			cout << " imgX :" << imageX << " imgY :" << imageY << endl;*/
+			//double diffX = imageX - TwoDopX;
+			//double diffY = imageY - TwoDopX;
+			/*double dist = sqrt(pow((imageX - TwoDopX), 2) + pow((imageY - TwoDopY), 2));
+			cout << "distance :" << dist << " X:" << TwoDopX << " Y:" << TwoDopY  << endl;*/
+		cv::Point2f opt_p_img(TwoDopX, TwoDopY);
+		//cout << "object point reproj " << opt_p_img << endl;
+		circle(img, opt_p_img, 4, cv::Scalar(0, 0, 255), 1);
+	}
 	//transpose for following the head rotation is same as the web cam face rotation otherwise it will move with opposite direction
 	rotM = rotM.t();// transpose to conform with majorness of opengl matrix
 }
@@ -831,7 +871,9 @@ void loadWithPoints(cv::Mat& ip, cv::Mat& img, vector<cv::Point2f> imagePoints) 
 int main(int argc, char** argv)
 {
 	cout << "read blendshape" << endl;
-	for (int j = 0; j < numOfuser; j++) {
+	//calculated_average_face = glmReadOBJ("shape_0_1.obj");
+	average_face = glmReadOBJ("shape_0_1.obj");
+	/*for (int j = 0; j < numOfuser; j++) {
 		vector<GLMmodel*> model;
 		for (int i = 0; i < numOfBlendshape; i++) {
 			char *theString = "FWH/";
@@ -850,7 +892,7 @@ int main(int argc, char** argv)
 			}
 		}
 		rank3Tensor.push_back(model);
-	}
+	}*/
 	for (int i = 0; i < 7; i++) {
 		prevImgPoint.push_back(cv::Point2f(0, 0));
 	}
@@ -863,7 +905,7 @@ int main(int argc, char** argv)
 	const int nExprs = 47;				// 46 expressions + 1 neutral
 	const int nVerts = 11510;			// 11510 vertices for each mesh
 
-	const string path = "C:\\Users\\Micky\\Desktop\\FacewareHouse_allData\\";
+	const string path = "C:\\Users\\ccha5314\\Desktop\\FacewareHouse_allData\\";
 	const string foldername = "Tester_";
 	const string bsfolder = "Blendshape";
 	const string filename = "shape.bs";
@@ -896,108 +938,45 @@ int main(int argc, char** argv)
 			}
 		}
 	}
+	initTensor = t;
 	int ms[2] = { 0, 1 };		// only the first two modes
 	int ds[2] = { numOfuser, 47 };	// pick 50 for identity and 25 for expression
 	vector<int> modes(ms, ms + 2);
 	vector<int> dims(ds, ds + 2);
 	auto comp2 = t.svd(modes, dims);
+	vector<double> wexptest, widtest;
+	widtest.push_back(1.0);
+	widtest.push_back(0);
+	wexptest.push_back(1);
+	for (int i = 1; i < numOfBlendshape; i++) {
+		wexptest.push_back(0);
+	}
+	auto result = initTensor.modeProduct(widtest, 0).modeProduct(wexptest, 1);
 
 	coreTensor = std::get<0>(comp2);
-	widAndWExp = std::get<1>(comp2);
-	tempWExpTensor = coreTensor.modeProduct(widAndWExp[0], 0);
-	tempWIdTensor = coreTensor.modeProduct(widAndWExp[1], 1);
+	UIdAndUExp = std::get<1>(comp2);
+	/*dataTensor = coreTensor.modeProduct(UIdAndUExp[0], 0).modeProduct(UIdAndUExp[1], 1);*/
 	vector<cv::Point3d> modelPoint;
 	vector<int> vertexPoint;
-	//vertexPoint.push_back(8638);	 // l eye (v 8083)
-	vertexPoint.push_back(8091);
-	//vertexPoint.push_back(8467);
-	//vertexPoint.push_back(8068);
-	//vertexPoint.push_back(8928);
-	//vertexPoint.push_back(8874);
+	//tempPt.push_back(cv::Point(shape.part(45).x(), shape.part(45).y())); // l eye (v 314)
+	//tempPt.push_back(cv::Point(shape.part(37).x(), shape.part(37).y()));// r eye (v 0)
+	//tempPt.push_back(cv::Point(shape.part(33).x(), shape.part(33).y()));//nose (v 1879)
+	//tempPt.push_back(cv::Point(shape.part(54).x(), shape.part(54).y()));// l mouth (v 1502)
+	//tempPt.push_back(cv::Point(shape.part(48).x(), shape.part(48).y())); // r mouth (v 695)
+	//tempPt.push_back(cv::Point(shape.part(16).x(), shape.part(16).y()));// l coutour (v 2011)
+	//tempPt.push_back(cv::Point(shape.part(0).x(), shape.part(0).y()));// r coutour (v 1138
+	vertexPoint.push_back(7347); // left eye
+	vertexPoint.push_back(4451); //right eye
+	vertexPoint.push_back(6328); // nose
+	vertexPoint.push_back(1594);	 // l mouth (v 6601) or line 6605
+	vertexPoint.push_back(187);		 // r mouth (v 728) or line 732 
+	vertexPoint.push_back(6878);	 // l contour (v 8699)
+	vertexPoint.push_back(685);	 // r contour (v 3484)
 
-	//vertexPoint.push_back(2325);	 // r eye (v 2343)
-	vertexPoint.push_back(2538);
-	/*vertexPoint.push_back(2710);
-	vertexPoint.push_back(3350);
-	vertexPoint.push_back(3216);
-	vertexPoint.push_back(3158);*/
-
-	//vertexPoint.push_back(8710);	 //nose (v 1264)
-	//vertexPoint.push_back(11151);
-	//vertexPoint.push_back(1235);
-	//vertexPoint.push_back(1197);
-	//vertexPoint.push_back(1549);
-	//vertexPoint.push_back(1553);
-	vertexPoint.push_back(1263);
-	//vertexPoint.push_back(7328);
-	//vertexPoint.push_back(7321);
-
-	//vertexPoint.push_back(7381);	 // l mouth (v 6601) or line 6605
-	//vertexPoint.push_back(6637);	 // l mouth (v 6601) or line 6605
-	//vertexPoint.push_back(6683);	 // l mouth (v 6601) or line 6605
-	vertexPoint.push_back(6601);	 // l mouth (v 6601) or line 6605
-	//vertexPoint.push_back(6747);	 // l mouth (v 6601) or line 6605
-	//vertexPoint.push_back(6565);	 // l mouth (v 6601) or line 6605
-	//vertexPoint.push_back(6523);	 // l mouth (v 6601) or line 6605
-
-	//vertexPoint.push_back(6551);
-	//vertexPoint.push_back(6632);
-	//vertexPoint.push_back(6730);
-	//vertexPoint.push_back(6531);
-	//vertexPoint.push_back(6522);
-
-	//vertexPoint.push_back(832);		 // r mouth (v 728) or line 732 
-	//vertexPoint.push_back(879);		 // r mouth (v 728) or line 732 
-	vertexPoint.push_back(728);		 // r mouth (v 728) or line 732 
-	//vertexPoint.push_back(754);		 // r mouth (v 728) or line 732 
-	//vertexPoint.push_back(866);		 // r mouth (v 728) or line 732 
-
-	//vertexPoint.push_back(825);		 // r mouth (v 728) or line 732 
-	//vertexPoint.push_back(893);		 // r mouth (v 728) or line 732 
-	//vertexPoint.push_back(876);		 // r mouth (v 728) or line 732 
-
-	vertexPoint.push_back(9374);	 // l contour (v 8699)
-	//vertexPoint.push_back(11176);	 // l contour (v 8699)
-	//vertexPoint.push_back(7560);	 // l contour (v 8699)
-	//vertexPoint.push_back(7900);	 // l contour (v 8699)
-	//vertexPoint.push_back(7646);	 // l contour (v 8699)
-	//vertexPoint.push_back(7718);	 // l contour (v 8699)
-	//vertexPoint.push_back(7836);	 // l contour (v 8699)
-	//vertexPoint.push_back(7579);	 // l contour (v 8699)
-	//vertexPoint.push_back(1690);	 // l contour (v 8699)
-
-	vertexPoint.push_back(3917);	 // r contour (v 3484)
-	//vertexPoint.push_back(5490);	 // r contour (v 3484)
-	//vertexPoint.push_back(2245);	 // r contour (v 3484)
-	//vertexPoint.push_back(1776);	 // r contour (v 3484)
-	//vertexPoint.push_back(1805);	 // r contour (v 3484)
-	//vertexPoint.push_back(2079);	 // r contour (v 3484)
-	//vertexPoint.push_back(1671);	 // r contour (v 3484)
-	//vertexPoint.push_back(1824);	 // r contour (v 3484)
-
-	//vertexPoint.push_back(2712);	 // r eyebrow(v 1138)
-	//vertexPoint.push_back(2495);	 // r eyebrow(v 1138)
-	//vertexPoint.push_back(2700);	 // r eyebrow(v 1138)
-	//vertexPoint.push_back(2698);	 // r eyebrow(v 1138)
-	//vertexPoint.push_back(2481);	 // r eyebrow(v 1138)
-
-	//vertexPoint.push_back(8814);	 // l eyebrow(v 1138)
-	//vertexPoint.push_back(8815);	 // l eyebrow(v 1138)
-	//vertexPoint.push_back(8830);	 // l eyebrow(v 1138)
-	//vertexPoint.push_back(8773);	 // l eyebrow(v 1138)
-	//vertexPoint.push_back(8776);	 // l eyebrow(v 1138)
-
-									 //modelPoints.push_back(cv::Point3f(0.294959, 0.493100, 0.389258));	// l eye (v 8083)
-									 //modelPoints.push_back(cv::Point3f(-0.263214, 0.495387, 0.373535));	// r eye (v 2343)
-									 //modelPoints.push_back(cv::Point3f(0.029220, 0.188548, 0.673340));	//nose (v 1264)
-									 //modelPoints.push_back(cv::Point3f(0.291080, -0.127212, 0.454637));	// l mouth (v 6601) or line 6605
-									 //modelPoints.push_back(cv::Point3f(-0.171941, -0.121142, 0.518103));	// r mouth (v 728) or line 732 
-									 //modelPoints.push_back(cv::Point3f(0.857392, 0.459262, -0.547478));	// l ear (v 8699)
-									 //modelPoints.push_back(cv::Point3f(-0.853804, 0.425016, -0.562550));		// r ear (v 3484)
 	for (int i = 0; i < vertexPoint.size(); i++) {
-		double x = roundFloat(empty_face[0]->vertices[3 * vertexPoint[i]]);
-		double y = roundFloat(empty_face[0]->vertices[3 * vertexPoint[i] + 1]);
-		double z = roundFloat(empty_face[0]->vertices[3 * vertexPoint[i] + 2]);
+		double x = roundFloat(average_face->vertices[3 * vertexPoint[i]]);
+		double y = roundFloat(average_face->vertices[3 * vertexPoint[i] + 1]);
+		double z = roundFloat(average_face->vertices[3 * vertexPoint[i] + 2]);
 		modelPoint.push_back(cv::Point3d(
 			x,
 			y,
@@ -1035,7 +1014,7 @@ int main(int argc, char** argv)
 	imgTex = MakeOpenCVGLTexture(cv::Mat());
 	imgWithDrawing = MakeOpenCVGLTexture(cv::Mat());
 
-	//loadNext();
+	loadNext();
 
 	start_opengl();
 
